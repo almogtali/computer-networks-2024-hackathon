@@ -89,38 +89,77 @@ class Client:
 
         print(f"[{self.team_name}] TCP transfer #{conn_index} finished, "
               f"total time: {elapsed:.2f}s, total speed: {speed_bps:.2f} bits/s")
-
     def udp_transfer(self, server_ip, udp_port, conn_index):
         """
         Step #6, #8, #9:
-          - Send a request over UDP, receive multiple packets, measure time, 
+        - Send a request over UDP, receive multiple packets, measure time,
             detect "no data for 1 second" as completed, compute packet loss, etc.
         """
-        # For demonstration, we just do a single “request” send and pretend we measure.
         start_time = time.time()
+        last_packet_time = start_time
+        received_sequences = set()
+        total_bytes_received = 0
 
+        # Create a UDP socket
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_socket:
-            # Send request (with file size)
+            # Optionally set a 1-second timeout so 'recvfrom()' raises socket.timeout
+            udp_socket.settimeout(1.0)
+
+            # 1) Send request (with file size)
             request_packet = struct.pack('!I', self.requested_file_size)
             udp_socket.sendto(request_packet, (server_ip, udp_port))
 
-            # In real code, you'd listen in a loop for incoming data, 
-            # track sequence numbers, and detect missing packets. 
-            # Here, we'll just sleep to simulate receiving data, 
-            # then assume 95% success...
-            time.sleep(2)
-            # Suppose we get no data for 1 second => transfer done
-            end_time = time.time()
+            # 2) Receive loop until no data for >1 second
+            while True:
+                try:
+                    data, addr = udp_socket.recvfrom(4096)
+                    if not data:
+                        # No data => server hung up or empty packet
+                        break
 
+                    # We got a packet => update last_packet_time
+                    last_packet_time = time.time()
+                    
+                    # 3) Parse the first 4 bytes as the sequence number
+                    seq_num = struct.unpack('!I', data[:4])[0]
+                    chunk = data[4:]  # The rest is the file data
+
+                    # Keep track of what we received
+                    received_sequences.add(seq_num)
+                    total_bytes_received += len(chunk)
+
+                except socket.timeout:
+                    # If we've gone 1 second with no data, conclude
+                    if time.time() - last_packet_time >= 1:
+                        break
+                    else:
+                        # Keep waiting
+                        continue
+
+        end_time = time.time()
         elapsed = end_time - start_time
-        speed_bps = (self.requested_file_size * 8) / elapsed if elapsed > 0 else 0
-        # Assume we got 95% success
-        packets_received_percent = 95
-        self.udp_transfer_stats.append((conn_index, elapsed, speed_bps, packets_received_percent))
 
-        print(f"[{self.team_name}] UDP transfer #{conn_index} finished, "
-              f"total time: {elapsed:.2f}s, total speed: {speed_bps:.2f} bits/s, "
-              f"percentage of packets received successfully: {packets_received_percent}%")
+        # Speed (bits/sec): total_bytes_received * 8 bits / elapsed
+        speed_bps = (total_bytes_received * 8) / elapsed if elapsed > 0 else 0.0
+
+        # Compute packet success
+        if received_sequences:
+            max_seq = max(received_sequences)
+            # If server sends packets from seq_num=0..max_seq, total packets is (max_seq+1)
+            total_expected = max_seq + 1
+            received_count = len(received_sequences)
+            packets_received_percent = int((received_count / total_expected) * 100)
+        else:
+            packets_received_percent = 0
+
+        # 4) Print results as specified
+        print(f"UDP transfer #{conn_index} finished, "
+            f"total time: {elapsed:.2f} seconds, "
+            f"total speed: {speed_bps:.2f} bits/second, "
+            f"percentage of packets received successfully: {packets_received_percent}%")
+
+        # 5) Store stats if needed
+        self.udp_transfer_stats.append((conn_index, elapsed, speed_bps, packets_received_percent))
 
     def start(self):
         """Start the client listening on a thread."""

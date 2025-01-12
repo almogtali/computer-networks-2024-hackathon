@@ -52,22 +52,43 @@ class Server:
             conn.sendall(b'X' * file_size) 
         finally:
             conn.close()
+    def _udp_send_file(self, udp_socket, client_addr, file_size):
+        """
+        Sends the requested 'file_size' in 4-byte sequence + data chunk packets.
+        Each packet layout: [seq_num:4 bytes] + [raw_data].
+        """
+        chunk_size = 1024
+        total_packets = (file_size + chunk_size - 1) // chunk_size
 
+        offset = 0
+        for seq_num in range(total_packets):
+            chunk_len = min(chunk_size, file_size - offset)
+            chunk = b'X' * chunk_len  # Simulated file data
+
+            # Build packet: 4-byte big-endian sequence + chunk
+            packet = struct.pack('!I', seq_num) + chunk
+            udp_socket.sendto(packet, client_addr)
+
+            offset += chunk_len
+            
     def handle_udp_connection(self, udp_socket):
         """
-        Handles incoming UDP requests for data. 
-        Step #8:
-         - Server sends multiple UDP packets to satisfy the requested file size.
+        Waits for incoming UDP requests, which contain a 4-byte file-size integer.
+        Spawns a thread to send that file in numbered packets.
         """
         while self.running:
             data, client_addr = udp_socket.recvfrom(1024)
-            # This is where you'd parse the request packet (e.g., file size) 
-            # and start sending back multiple UDP packets with sequence numbers.
-            # For now, just log that we got something from the client.
-            print(f"[{self.team_name}] Received UDP request from {client_addr}. (Data length={len(data)})")
+            if len(data) < 4:
+                # Invalid request
+                continue
 
-            # We would send back multiple packets.
-            # Omitted for brevity in the example.
+            file_size_req = struct.unpack('!I', data[:4])[0]
+            # Spawn a thread to send the file to this client
+            threading.Thread(
+                target=self._udp_send_file,
+                args=(udp_socket, client_addr, file_size_req),
+                daemon=True
+            ).start()
 
     def start(self):
         """
