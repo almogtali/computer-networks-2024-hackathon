@@ -36,7 +36,6 @@ class Server:
             while self.running:
                 # Broadcast the offer on our known UDP port
                 udp_socket.sendto(offer_message, ('<broadcast>', self.udp_port))
-                # For demonstration, show which server is broadcasting
                 print(f"{self.COLOR_GREEN}[{self.team_name}] Sending offer broadcast from {self.ip_address}{self.COLOR_RESET}")
                 time.sleep(1)
 
@@ -55,6 +54,7 @@ class Server:
         except Exception as e:
             print(f"{self.COLOR_RED}[{self.team_name}] Error handling TCP request: {e}{self.COLOR_RESET}")
         finally:
+            self.print_summary()
             conn.close()
     
     def _udp_send_file(self, udp_socket, client_addr, file_size):
@@ -98,7 +98,6 @@ class Server:
             except Exception as e:
                 print(f"{self.COLOR_RED}[{self.team_name}] Error handling UDP request: {e}{self.COLOR_RESET}")
 
-
     def start(self):
         """
         Starts the server's threads:
@@ -128,7 +127,6 @@ class Server:
             tcp_socket.bind(('', self.tcp_port))
             tcp_socket.listen()
             print(f"{self.COLOR_BLUE}[{self.team_name}] Listening on TCP port {self.tcp_port}{self.COLOR_RESET}")
-
             
             while self.running:
                 conn, addr = tcp_socket.accept()
@@ -141,8 +139,6 @@ class Server:
             # Bind to our known UDP port
             udp_socket.bind(('', self.udp_port))
             print(f"{self.COLOR_BLUE}[{self.team_name}] Listening on UDP port {self.udp_port}{self.COLOR_RESET}")
-
-            
             while self.running:
                 self.handle_udp_connection(udp_socket)
 
@@ -150,3 +146,28 @@ class Server:
         print(f"{self.COLOR_GREEN}\n--- Server Summary ---{self.COLOR_RESET}")
         print(f"TCP Requests Handled: {self.stats['tcp_requests']}")
         print(f"UDP Requests Handled: {self.stats['udp_requests']}")
+
+    def send_payload(self, udp_socket, client_addr, total_segments, current_segment, payload_data):
+        """
+        Sends a payload message to the client following the specified format.
+        Format:
+        - Magic cookie (4 bytes): 0xabcddcba
+        - Message type (1 byte): 0x4
+        - Total segment count (8 bytes)
+        - Current segment count (8 bytes)
+        - Actual payload (remaining bytes)
+        """
+        magic_cookie = self.MAGIC_COOKIE
+        message_type = 0x4
+        total_segments_bytes = struct.pack('!Q', total_segments)
+        current_segment_bytes = struct.pack('!Q', current_segment)
+        payload = (
+            struct.pack('!IB', magic_cookie, message_type)
+            + total_segments_bytes
+            + current_segment_bytes
+            + payload_data
+        )
+        udp_socket.sendto(payload, client_addr)
+        print(
+            f"{self.COLOR_GREEN}[{self.team_name}] Sent payload segment {current_segment}/{total_segments}{self.COLOR_RESET}"
+        )
