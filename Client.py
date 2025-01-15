@@ -10,6 +10,12 @@ class Client:
     OFFER_TYPE = 0x2
     REQUEST_TYPE = 0x3
 
+    COLOR_RESET = "\033[0m"
+    COLOR_GREEN = "\033[92m"
+    COLOR_YELLOW = "\033[93m"
+    COLOR_RED = "\033[91m"
+    COLOR_BLUE = "\033[94m"
+    
     def __init__(self, team_name, requested_file_size, tcp_connections, udp_connections):
         self.team_name = team_name
         self.requested_file_size = requested_file_size
@@ -26,22 +32,23 @@ class Client:
           - Clients start up and listen for server 'offer' announcements via UDP.
           - Print out "Received offer from <server_ip>"
         """
-        print(f"[{self.team_name}] Client started, listening for offer requests...")
+        # print(f"[{self.team_name}] Client started, listening for offer requests...")
+        print(f"{self.COLOR_GREEN}[{self.team_name}] Client started, listening for offer requests...{self.COLOR_RESET}")
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_socket:
             # Bind to the same broadcast port the server uses for offers
             udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             udp_socket.bind(('', 0))
             # Listen until we decide to stop
             while self.running:
-                data, server_addr = udp_socket.recvfrom(1024)
-                magic_cookie, message_type, udp_port, tcp_port = struct.unpack('!IBHH', data)
-                if magic_cookie == self.MAGIC_COOKIE and message_type == self.OFFER_TYPE:
-                    print(f"[{self.team_name}] Received offer from {server_addr[0]}")
-                    # Step #6 and #7:
-                    #   - Connect to the server via TCP and UDP 
-                    #   - Send file size, measure start times, etc.
-                    self.handle_server(server_addr[0], udp_port, tcp_port)
-
+                try:
+                    data, server_addr = udp_socket.recvfrom(1024)
+                    magic_cookie, message_type, udp_port, tcp_port = struct.unpack('!IBHH', data)
+                    if magic_cookie == self.MAGIC_COOKIE and message_type == self.OFFER_TYPE:
+                        print(f"{self.COLOR_BLUE}[{self.team_name}] Received offer from {server_addr[0]}{self.COLOR_RESET}")
+                        self.handle_server(server_addr[0], udp_port, tcp_port)
+                except Exception as e:
+                    print(f"{self.COLOR_RED}Error receiving offer: {e}{self.COLOR_RESET}")
+    
     def handle_server(self, server_ip, udp_port, tcp_port):
         """
         Connect to the server with both TCP and UDP to request the file.
@@ -87,8 +94,12 @@ class Client:
         speed_bps = (total_received * 8) / elapsed if elapsed > 0 else 0
         self.tcp_transfer_stats.append((conn_index, elapsed, speed_bps))
 
-        print(f"[{self.team_name}] TCP transfer #{conn_index} finished, "
-              f"total time: {elapsed:.2f}s, total speed: {speed_bps:.2f} bits/s")
+        # print(f"[{self.team_name}] TCP transfer #{conn_index} finished, "
+            #   f"total time: {elapsed:.2f}s, total speed: {speed_bps:.2f} bits/s")
+        print(f"{self.COLOR_YELLOW}[{self.team_name}] TCP transfer #{conn_index} finished:{self.COLOR_RESET} \n"
+              f"  Total time: {elapsed:.2f}s\n"
+              f"  Speed: {speed_bps:.2f} bits/s")
+        
     def udp_transfer(self, server_ip, udp_port, conn_index):
         """
         Step #6, #8, #9:
@@ -152,15 +163,23 @@ class Client:
         else:
             packets_received_percent = 0
 
-        # 4) Print results as specified
-        print(f"UDP transfer #{conn_index} finished, "
-            f"total time: {elapsed:.2f} seconds, "
-            f"total speed: {speed_bps:.2f} bits/second, "
-            f"percentage of packets received successfully: {packets_received_percent}%")
+        print(f"{self.COLOR_YELLOW}UDP transfer #{conn_index} finished:{self.COLOR_RESET} \n"
+              f"  Total time: {elapsed:.2f}s\n"
+              f"  Speed: {speed_bps:.2f} bits/s\n"
+              f"  Packet success: {packets_received_percent}%")
 
-        # 5) Store stats if needed
         self.udp_transfer_stats.append((conn_index, elapsed, speed_bps, packets_received_percent))
 
     def start(self):
         """Start the client listening on a thread."""
         threading.Thread(target=self.listen_for_offers, daemon=True).start()
+
+    def print_summary(self):
+        print(f"{self.COLOR_GREEN}\n--- Transfer Summary ---{self.COLOR_RESET}")
+        print(f"TCP Transfers:")
+        for stat in self.tcp_transfer_stats:
+            print(f"  Connection #{stat[0]}: Time {stat[1]:.2f}s, Speed {stat[2]:.2f} bits/s")
+
+        print(f"UDP Transfers:")
+        for stat in self.udp_transfer_stats:
+            print(f"  Connection #{stat[0]}: Time {stat[1]:.2f}s, Speed {stat[2]:.2f} bits/s, Packet Success {stat[3]}%")

@@ -35,7 +35,7 @@ def demo_scenario():
 
     # Let the demo run for ~10 seconds to see console outputs
     # In a real app, you'd have more robust synchronization or signals.
-    time.sleep(10)
+    time.sleep(100)
 
     # STEP 10: When all transfers are completed, the clients might print "All transfers complete!"
     # For the sake of the example, we just stop the servers:
