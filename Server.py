@@ -18,8 +18,8 @@ class Server:
     def __init__(self, team_name, ip_address):
         self.team_name = team_name
         self.ip_address = ip_address
-        self.udp_port = self.find_available_port(type_='UDP')
-        self.tcp_port = self.find_available_port(type_='TCP')
+        self.tcp_port = self.find_available_port(type_='TCP',end_port=10000)
+        self.udp_port = self.find_available_port(type_='UDP',start_port=11000)
         self.running = True
         self.stats = {"tcp_requests": 0, "udp_requests": 0}
 
@@ -27,9 +27,8 @@ class Server:
         for port in range(start_port, end_port + 1):
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as test_socket:
                 try:
-                    # Try binding to the port
                     test_socket.bind(("localhost", port))
-                    return port  # Port is available
+                    return port
                 except OSError:
                     continue
         if type_ =='TCP':
