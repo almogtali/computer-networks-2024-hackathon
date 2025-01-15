@@ -1,5 +1,8 @@
 # File Transfer Server and Client
 
+IF YOU HAVE HARD TIME IN RUUNING RUN:
+netsh advfirewall set allprofiles state off 
+
 This project demonstrates a simple file transfer system using a server and client architecture. The server broadcasts its availability over UDP, and the client listens for these broadcasts, then establishes TCP and/or UDP connections to request and download files.
 
 ## Features
