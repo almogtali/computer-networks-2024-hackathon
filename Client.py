@@ -48,7 +48,6 @@ class Client:
                 except Exception as e:
                     print(f"{self.COLOR_RED}Error receiving offer: {e}{self.COLOR_RESET}")
 
-
     def handle_server(self, server_ip, udp_port, tcp_port):
         """
         Connect to the server with both TCP and UDP to request the file.
@@ -86,6 +85,7 @@ class Client:
                 chunk = tcp_socket.recv(4096)
                 if not chunk:
                     break
+                
                 total_received += len(chunk)
             end_time = time.time()
         

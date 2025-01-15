@@ -3,7 +3,7 @@ import socket
 import struct
 import threading
 import time
-
+import const
 
 class Server:
     MAGIC_COOKIE = 0xabcddcba
@@ -15,14 +15,27 @@ class Server:
     COLOR_RED = "\033[91m"
     COLOR_BLUE = "\033[94m"
 
-    def __init__(self, team_name, ip_address, udp_port, tcp_port):
+    def __init__(self, team_name, ip_address):
         self.team_name = team_name
         self.ip_address = ip_address
-        self.udp_port = udp_port
-        self.tcp_port = tcp_port
+        self.udp_port = self.find_available_port(type_='UDP')
+        self.tcp_port = self.find_available_port(type_='TCP')
         self.running = True
         self.stats = {"tcp_requests": 0, "udp_requests": 0}
 
+    def find_available_port(self,type_,start_port=1024, end_port=65535):
+        for port in range(start_port, end_port + 1):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as test_socket:
+                try:
+                    # Try binding to the port
+                    test_socket.bind(("localhost", port))
+                    return port  # Port is available
+                except OSError:
+                    continue
+        if type_ =='TCP':
+            return const.def_tcp
+        return const.def_udp
+     
     def send_offers(self):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_socket:
             # Enable broadcast
@@ -35,7 +48,7 @@ class Server:
                                         self.tcp_port)
             while self.running:
                 # Broadcast the offer on our known UDP port
-                udp_socket.sendto(offer_message, ('<broadcast>', self.udp_port))
+                udp_socket.sendto(offer_message, ('<broadcast>', const.port_broadcast))
                 print(f"{self.COLOR_GREEN}[{self.team_name}] Sending offer broadcast from {self.ip_address}{self.COLOR_RESET}")
                 time.sleep(1)
 
