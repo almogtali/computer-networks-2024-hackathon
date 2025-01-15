@@ -29,26 +29,83 @@ class Client:
     def listen_for_offers(self):
         """
         Step #4 and #5: 
-          - Clients start up and listen for server 'offer' announcements via UDP.
-          - Print out "Received offer from <server_ip>"
+          - Clients start up and listen for server 'offer' announcements via UDP and TCP.
+          - Print out "Received offer from <server_ip>".
         """
-        # print(f"[{self.team_name}] Client started, listening for offer requests...")
         print(f"{self.COLOR_GREEN}[{self.team_name}] Client started, listening for offer requests...{self.COLOR_RESET}")
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_socket:
-            # Bind to the same broadcast port the server uses for offers
+
+        # Create sockets for UDP and TCP
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_socket, \
+                socket.socket(socket.AF_INET, socket.SOCK_STREAM) as tcp_socket:
+
+            # Set up the UDP socket
             udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            udp_socket.bind(('', 0))
-            # Listen until we decide to stop
-            while self.running:
-                try:
-                    data, server_addr = udp_socket.recvfrom(1024)
-                    magic_cookie, message_type, udp_port, tcp_port = struct.unpack('!IBHH', data)
-                    if magic_cookie == self.MAGIC_COOKIE and message_type == self.OFFER_TYPE:
-                        print(f"{self.COLOR_BLUE}[{self.team_name}] Received offer from {server_addr[0]}{self.COLOR_RESET}")
-                        self.handle_server(server_addr[0], udp_port, tcp_port)
-                except Exception as e:
-                    print(f"{self.COLOR_RED}Error receiving offer: {e}{self.COLOR_RESET}")
-    
+            udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            udp_socket.bind(('', 0))  # Bind to an ephemeral port
+
+            # Set up the TCP socket
+            tcp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            tcp_socket.bind(('', 0))  # Bind to an ephemeral port
+            tcp_socket.listen(5)  # Start listening for incoming TCP connections
+
+            print(f"{self.COLOR_YELLOW}[{self.team_name}] Listening on UDP port {udp_socket.getsockname()[1]} and TCP port {tcp_socket.getsockname()[1]}{self.COLOR_RESET}")
+
+            # Use threads to handle both UDP and TCP listening simultaneously
+
+            def udp_listener():
+                while self.running:
+                    try:
+                        data, server_addr = udp_socket.recvfrom(1024)
+                        if len(data) < struct.calcsize('!IBHH'):
+                            print(f"{self.COLOR_RED}Invalid UDP packet size from {server_addr}{self.COLOR_RESET}")
+                            continue
+
+                        magic_cookie, message_type, udp_port, tcp_port = struct.unpack('!IBHH', data)
+                        if magic_cookie == self.MAGIC_COOKIE and message_type == self.OFFER_TYPE:
+                            print(
+                                f"{self.COLOR_BLUE}[{self.team_name}] Received UDP offer from {server_addr[0]}{self.COLOR_RESET}")
+                            self.handle_server(server_addr[0], udp_port, tcp_port)
+                    except Exception as e:
+                        print(f"{self.COLOR_RED}Error receiving UDP offer: {e}{self.COLOR_RESET}")
+
+            def tcp_listener():
+                while self.running:
+                    try:
+                        conn, addr = tcp_socket.accept()
+                        with conn:
+                            data = conn.recv(1024)
+                            if len(data) < struct.calcsize('!IBHH'):
+                                print(f"{self.COLOR_RED}Invalid TCP packet size from {addr}{self.COLOR_RESET}")
+                                continue
+
+                            magic_cookie, message_type, udp_port, tcp_port = struct.unpack('!IBHH', data)
+                            if magic_cookie == self.MAGIC_COOKIE and message_type == self.OFFER_TYPE:
+                                print(
+                                    f"{self.COLOR_BLUE}[{self.team_name}] Received TCP offer from {addr[0]}{self.COLOR_RESET}")
+                                self.handle_server(addr[0], udp_port, tcp_port)
+                    except Exception as e:
+                        print(f"{self.COLOR_RED}Error receiving TCP offer: {e}{self.COLOR_RESET}")
+
+            # Start threads for both listeners
+            udp_thread = threading.Thread(target=udp_listener, daemon=True)
+            tcp_thread = threading.Thread(target=tcp_listener, daemon=True)
+
+            udp_thread.start()
+            tcp_thread.start()
+
+            # Wait for threads to stop if needed
+            try:
+                while self.running:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                print(f"{self.COLOR_RED}[{self.team_name}] Shutting down listeners...{self.COLOR_RESET}")
+                self.running = False
+
+            udp_thread.join()
+            tcp_thread.join()
+
+        print(f"{self.COLOR_GREEN}[{self.team_name}] Listener stopped.{self.COLOR_RESET}")
+
     def handle_server(self, server_ip, udp_port, tcp_port):
         """
         Connect to the server with both TCP and UDP to request the file.
@@ -183,3 +240,4 @@ class Client:
         print(f"UDP Transfers:")
         for stat in self.udp_transfer_stats:
             print(f"  Connection #{stat[0]}: Time {stat[1]:.2f}s, Speed {stat[2]:.2f} bits/s, Packet Success {stat[3]}%")
+
